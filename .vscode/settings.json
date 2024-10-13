@@ -1,0 +1,15 @@
+{
+    "files.associations": {
+        "rrfrag.h": "c",
+        "string.h": "c",
+        "winsock2.h": "c",
+        "stdio.h": "c",
+        "dns_message.h": "c",
+        "stdbool.h": "c",
+        "resource_record.h": "c",
+        "stdlib.h": "c",
+        "packedrr.h": "c",
+        "question.h": "c",
+        "assert.h": "c"
+    }
+}
