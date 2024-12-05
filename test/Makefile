@@ -3,7 +3,7 @@ CC = gcc
 CFLAGS = -Wall -g 
 
 # List of object files
-OBJ = dns_message.o packedrr.o question.o resource_record.o rrfrag.o sandbox.o -lm
+OBJ = dns_message.o packedrr.o question.o resource_record.o rrfrag.o sandbox.o handler.o -lm
 
 # Target to create the executable
 server: $(OBJ)
@@ -27,8 +27,8 @@ rrfrag.o: rrfrag.c
 sandbox.o: sandbox.c
 	$(CC) $(CFLAGS) -c sandbox.c
 
-server.o: server.c
-	$(CC) $(CFLAGS) -c server.c
+handler.o: handler.c
+	$(CC) $(CFLAGS) -c handler.c
 
 # Clean up object files and executable
 clean:

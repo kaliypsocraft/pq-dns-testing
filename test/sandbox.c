@@ -28,12 +28,6 @@ int rrfs_copied = 0;
 bool BYPASS = false;
 
 
-int main(int argc, char **argv) {
-    
-    return 0;
-}
-
-
 char *
 itoa(uint16_t in) {
 	char *res = NULL;
@@ -80,6 +74,9 @@ PartialRR *find_partialrr(PartialDNSMessage *pm, uint16_t rrid) {
   if (pm == NULL) {
     return NULL;
   }
+  printf("rrid: %u\n", rrid);
+  int length = sizeof(pm) / sizeof(pm[0]);  
+  printf("Length: %d\n", length);
   for (uint16_t i = 0; i < pm->ancount; i++) {
     if (pm->answers_section[i]->rrid == rrid) {
       return pm->answers_section[i];
@@ -99,7 +96,7 @@ PartialRR *find_partialrr(PartialDNSMessage *pm, uint16_t rrid) {
 }
 // Obtain fragments and reconstruct them in order to verify later on
 void copy_section(PartialDNSMessage *pm, PackedRR **msgsection, uint16_t sec_len) {
-	for (uint16_t i = 0; i < sec_len; i++) {
+  for (uint16_t i = 0; i < sec_len; i++) {
         RRFrag *rrfrag = msgsection[i];
         uint16_t rrid = rrfrag->rrid;
         uint32_t curidx = rrfrag->curidx;
@@ -129,12 +126,15 @@ void copy_section(PartialDNSMessage *pm, PackedRR **msgsection, uint16_t sec_len
             }
             prr->rrsize = rrfrag->rrsize;
         }
-        for (uint16_t j = blockidx; j < lastblockidx; j++) {
-            if (prr->block_markers[j] == BLOCKRECVD) {
+        for (uint16_t j = blockidx; j < (lastblockidx / 2); j++) {
+            if (prr->block_markers[j] != BLOCKRECVD) {
                 printf("block wasn't waiting for data\n");
                 ERROR();
             }
+          printf("Testing %d at index %d\n", prr->block_markers[j], j);
         }
+        printf("Hello!");
+        // Copy section
         memcpy(prr->bytes + rrfrag->curidx, rrfrag->fragdata, rrfrag->fragsize);
         for (uint16_t j = blockidx; j < lastblockidx; j++) {
             prr->block_markers[j] = BLOCKRECVD;
