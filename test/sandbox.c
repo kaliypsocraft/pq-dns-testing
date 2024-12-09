@@ -74,9 +74,6 @@ PartialRR *find_partialrr(PartialDNSMessage *pm, uint16_t rrid) {
   if (pm == NULL) {
     return NULL;
   }
-  printf("rrid: %u\n", rrid);
-  int length = sizeof(pm) / sizeof(pm[0]);  
-  printf("Length: %d\n", length);
   for (uint16_t i = 0; i < pm->ancount; i++) {
     if (pm->answers_section[i]->rrid == rrid) {
       return pm->answers_section[i];
@@ -92,24 +89,33 @@ PartialRR *find_partialrr(PartialDNSMessage *pm, uint16_t rrid) {
       return pm->additional_section[i];
     }
   }
+  printf("Could not find!\n");
   return NULL;
 }
 // Obtain fragments and reconstruct them in order to verify later on
 void copy_section(PartialDNSMessage *pm, PackedRR **msgsection, uint16_t sec_len) {
-  for (uint16_t i = 0; i < sec_len; i++) {
-        RRFrag *rrfrag = msgsection[i];
-        uint16_t rrid = rrfrag->rrid;
-        uint32_t curidx = rrfrag->curidx;
-        uint16_t fragsize = rrfrag->fragsize;
+
+    RRFrag *rrfrag = msgsection[0]->data.rrfrag;
+    printf("rrfrag->fragsize: %d\n", rrfrag->fragsize);
+    for (int i = 0; i < sec_len; i++) {
+        uint16_t rrid = rrfrag[i].rrid;
+        uint32_t curidx = rrfrag[i].curidx;
+        uint16_t fragsize = rrfrag[i].fragsize;
         // Find the associated record somewhere in the partialDNSMessage
+        //printf("iteration: %d | rrid: %d\n",i, rrid);
         PartialRR *prr = find_partialrr(pm, rrid);
+        // prr->bytes_received = 100000;
+        /**/
         if (prr->rrid == 0) {
             prr->rrid = rrid;
         }
-        // Sanity check that we aren't overwriting anything we shouldn't.
+
+
+        // Sanity check that we aren't overwriting anything we shouldn't
         uint16_t blockidx = curidx / (double)BLOCKSIZE;
         uint16_t lastblockidx = blockidx + ceil(fragsize / (double)BLOCKSIZE);
         uint16_t totalblocks = ceil(rrfrag->rrsize / (double)BLOCKSIZE);
+
         if (prr->block_markers == NULL) {
             prr->block_markers = malloc(sizeof(int8_t) * totalblocks);
             for (uint16_t j = 0; j < totalblocks; j++) {
@@ -117,35 +123,101 @@ void copy_section(PartialDNSMessage *pm, PackedRR **msgsection, uint16_t sec_len
             }
             prr->expected_blocks = totalblocks;
         }
+
         if (prr->bytes == NULL) {
-            prr->bytes = malloc(sizeof(unsigned char) * rrfrag->rrsize);
+            prr->bytes = malloc(sizeof(unsigned char) * rrfrag->fragsize);
+            prr->bytes_capacity = rrfrag->fragsize;
+            prr->headers = malloc(sizeof(FragHeader)); // Fix this
+            prr->headers_capacity = 1;
+
             if (prr->bytes == NULL) {
                 printf("Error allocating bytes in prr\n");
                 fflush(stdout);
                 exit(-1);
             }
+            if (prr->headers == NULL) {
+                printf("Error allocating headers in prr\n");
+                fflush(stdout);
+                exit(-1);
+            }
+
             prr->rrsize = rrfrag->rrsize;
         }
-        for (uint16_t j = blockidx; j < (lastblockidx / 2); j++) {
+        /*
+        for (uint16_t j = blockidx; j < lastblockidx; j++) {
             if (prr->block_markers[j] != BLOCKRECVD) {
                 printf("block wasn't waiting for data\n");
-                ERROR();
+                // ERROR();
             }
-          printf("Testing %d at index %d\n", prr->block_markers[j], j);
         }
-        printf("Hello!");
-        // Copy section
-        memcpy(prr->bytes + rrfrag->curidx, rrfrag->fragdata, rrfrag->fragsize);
+        */
+    //prr->bytes_received = 1000;
+        //printf("prr->bytes_capacity: %ld\n", prr->bytes_capacity);
+        //printf("prr->bytes_received: %ld\n", prr->bytes_received);
+        while (prr->bytes_received + rrfrag->fragsize > prr->bytes_capacity) {
+            // Increase byte array size dynamically as needed
+            prr->bytes_capacity *= 2;
+            prr->bytes = realloc(prr->bytes, sizeof(unsigned char) * prr->bytes_capacity);
+            
+            if (prr->bytes == NULL) {
+                printf("Error reallocating bytes in prr\n");
+                fflush(stdout);
+                exit(-1);
+            }
+        }
+
+        while (prr->num_headers + 1 > prr->headers_capacity) {
+            // Double headers if necessary
+            prr->headers_capacity *= 2;
+            prr->headers = realloc(prr->headers, prr->headers_capacity * (sizeof(FragHeader)));
+
+            if (prr->headers == NULL) {
+                printf("Error reallocating headers in prr\n");
+                fflush(stdout);
+                exit(-1);
+            }
+        }
+        //printf("rrfrag->fragsize: %d\n", rrfrag->fragsize);
+        //memcpy(prr->bytes + prr->bytes_received, rrfrag->fragdata, rrfrag->fragsize);
+        //printf("Here!\n");
+        
+        prr->bytes_received += rrfrag->fragsize;
+        prr->headers[prr->num_headers].frag_size = rrfrag->fragsize;
+        prr->headers[prr->num_headers].frag_start = rrfrag->curidx;
+        prr->num_headers++;
+
         for (uint16_t j = blockidx; j < lastblockidx; j++) {
             prr->block_markers[j] = BLOCKRECVD;
         }
+
         prr->blocks_received += lastblockidx - blockidx;
-        prr->bytes_received += rrfrag->fragsize;
+
         if (prr->expected_blocks == prr->blocks_received) {
             prr->is_complete = true;
+            /*
             for (uint16_t j = 0; j < prr->expected_blocks; j++) {
                 assert(prr->block_markers[j] == BLOCKRECVD);
             }
+            */
+
+            unsigned char *unsorted_prr = prr->bytes;
+            prr->bytes = malloc(sizeof(unsigned char) * prr->bytes_capacity);
+
+            if (prr->bytes == NULL) {
+                printf("Error allocating bytes in prr\n");
+                fflush(stdout);
+                exit(-1);
+            }
+
+            uint32_t byteidx = 0;
+            for (int i = 0; i < prr->num_headers; i++) {
+                memcpy(prr->bytes + prr->headers[i].frag_start, unsorted_prr + byteidx, prr->headers[i].frag_size);
+                byteidx += prr->headers[i].frag_size;
+            }
+
+            free(unsorted_prr);
+            free(prr->headers);
+            prr->headers = NULL;
         }
-	}	
+    }
 }
